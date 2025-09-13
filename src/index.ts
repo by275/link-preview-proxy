@@ -42,6 +42,11 @@ const getText = async (resp: Response): Promise<string> => {
 	}
 };
 
+const getHead = (html: string): string => {
+	const match = html.match(/<head>(.*?)<\/head>/is);
+	return match ? match[1] : '';
+};
+
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
 		const url = new URL(request.url);
@@ -65,8 +70,9 @@ export default {
 				}
 
 				const htmlText = await getText(originResp.clone());
+				let head = getHead(htmlText);
 
-				const metaHtml = `${htmlText.split("<body>")[0]}<body></body></html>`;
+				const metaHtml = `<!DOCTYPE html><html><head>${head}</head><body></body></html>`;
 
 				return new Response(metaHtml, {
 					headers: { 'Content-Type': 'text/html; charset=utf-8' }
