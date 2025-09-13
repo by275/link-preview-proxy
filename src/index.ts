@@ -24,29 +24,23 @@ const BOT_AGENTS = [
 	'Googlebot',
 ];
 
-function isBotRequest(userAgent: string) {
-	return BOT_AGENTS.some(bot => userAgent.includes(bot));
-}
+const isBotRequest = (userAgent: string): boolean =>
+	BOT_AGENTS.some(bot => userAgent.includes(bot));
 
-async function getText(resp: Response) {
-	let charset = 'utf-8'; // default
+const getText = async (resp: Response): Promise<string> => {
 	const contentType = resp.headers.get('content-type') || '';
 	const charsetMatch = contentType.match(/charset=([^;]+)/i);
-	if (charsetMatch && charsetMatch[1]) {
-		charset = charsetMatch[1].toLowerCase();
-	}
+	const charset = charsetMatch?.[1]?.toLowerCase() || 'utf-8';
 
 	const buffer = await resp.arrayBuffer();
 
 	try {
-		const decoder = new TextDecoder(charset);
-		return decoder.decode(buffer);
-	} catch (e) {
-		console.error(`Invalid charset '${charset}', falling back to utf-8.`);
-		const decoder = new TextDecoder('utf-8');
-		return decoder.decode(buffer);
+		return new TextDecoder(charset).decode(buffer);
+	} catch {
+		console.warn(`Invalid charset '${charset}', using utf-8 fallback.`);
+		return new TextDecoder('utf-8').decode(buffer);
 	}
-}
+};
 
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
@@ -66,7 +60,7 @@ export default {
 					headers: FETCH_HEADERS
 				});
 				if (!originResp.ok) {
-					console.log(`Response from Origin: ${originResp.status}`);
+					console.warn(`Origin response status: ${originResp.status}`);
 					return originResp;
 				}
 
