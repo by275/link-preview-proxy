@@ -75,7 +75,7 @@ export default {
 				const metaHtml = `${htmlText.split("<body>")[0]}<body></body></html>`;
 
 				return new Response(metaHtml, {
-					headers: { 'Content-Type': 'text/html' }
+					headers: { 'Content-Type': 'text/html; charset=utf-8' }
 				});
 
 			} catch (e) {
