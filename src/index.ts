@@ -1,13 +1,13 @@
 const BOT_AGENTS = [
-	'Slackbot',
-	'Discordbot',
-	'TelegramBot',
+	'slackbot',
+	'discordbot',
+	'telegrambot',
 	'facebookexternalhit',
-	'Twitterbot',
-	'Googlebot',
-	'LinkedInBot',
-	'WhatsApp',
-	'Notion',
+	'twitterbot',
+	'googlebot',
+	'linkedinbot',
+	'whatsapp',
+	'notion',
 ];
 
 const FETCH_HEADERS = {
@@ -22,7 +22,7 @@ type WorkerEnv = Env & {
 };
 
 const isBotRequest = (request: Request): boolean => {
-	const userAgent = request.headers.get('User-Agent') || '';
+	const userAgent = (request.headers.get('User-Agent') || '').toLowerCase();
 
 	return BOT_AGENTS.some(bot => userAgent.includes(bot));
 };

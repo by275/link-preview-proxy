@@ -37,6 +37,26 @@ describe('link preview worker', () => {
 		);
 	});
 
+	it('matches bot user agents case-insensitively', async () => {
+		fetchSpy.mockResolvedValue(
+			new Response('<!DOCTYPE html><html><head><meta property="og:title" content="Hello"></head><body>Body</body></html>', {
+				headers: { 'content-type': 'text/html; charset=utf-8' },
+			}),
+		);
+
+		const request = new IncomingRequest('https://worker.example/?url=https://example.com/article', {
+			headers: {
+				'User-Agent': 'teLEgramBOT 1.0',
+			},
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(200);
+		expect(await response.text()).toContain('<meta property="og:title" content="Hello">');
+	});
+
 	it('redirects non-bot requests to the target URL', async () => {
 		const request = new IncomingRequest('https://worker.example/?url=https://example.com/article', {
 			headers: {
