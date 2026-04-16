@@ -46,6 +46,36 @@ const ensureAllowedDomain = (targetURL: URL, allowedDomains: string[]): Response
 	return isAllowed ? null : new Response('Domain not in whitelist', { status: 403 });
 };
 
+const isPrivateHostname = (hostname: string): boolean => {
+	const normalized = hostname.toLowerCase();
+	if (normalized === 'localhost') {
+		return true;
+	}
+
+	if (/^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
+		const octets = normalized.split('.').map(Number);
+		const [a, b] = octets;
+		return (
+			a === 10 ||
+			a === 127 ||
+			(a === 169 && b === 254) ||
+			(a === 172 && b >= 16 && b <= 31) ||
+			(a === 192 && b === 168)
+		);
+	}
+
+	if (normalized === '::1') {
+		return true;
+	}
+
+	return normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80:');
+};
+
+const ensurePublicTarget = (targetURL: URL): Response | null =>
+	isPrivateHostname(targetURL.hostname)
+		? new Response('Private network targets are not allowed', { status: 403 })
+		: null;
+
 const getText = async (resp: Response): Promise<string> => {
 	const contentType = resp.headers.get('content-type') || '';
 	const charsetMatch = contentType.match(/charset=([^;]+)/i);
@@ -123,6 +153,11 @@ export default {
 		const targetURL = validateTargetUrl(targetUrl);
 		if (!targetURL) {
 			return new Response('Invalid Request', { status: 400 });
+		}
+
+		const privateTargetError = ensurePublicTarget(targetURL);
+		if (privateTargetError) {
+			return privateTargetError;
 		}
 
 		const allowedDomains = getAllowedDomains(env as WorkerEnv);

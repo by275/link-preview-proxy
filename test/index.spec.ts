@@ -113,6 +113,36 @@ describe('link preview worker', () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
+	it('blocks localhost targets', async () => {
+		const request = new IncomingRequest('https://worker.example/?url=http://localhost/admin', {
+			headers: {
+				'User-Agent': 'TelegramBot 1.0',
+			},
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(403);
+		expect(await response.text()).toBe('Private network targets are not allowed');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('blocks private ipv4 targets', async () => {
+		const request = new IncomingRequest('https://worker.example/?url=http://192.168.0.10/admin', {
+			headers: {
+				'User-Agent': 'TelegramBot 1.0',
+			},
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(403);
+		expect(await response.text()).toBe('Private network targets are not allowed');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
 	it('returns 400 for non-root requests without url', async () => {
 		const request = new IncomingRequest('https://worker.example/invalid');
 		const ctx = createExecutionContext();
