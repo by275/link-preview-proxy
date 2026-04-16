@@ -90,6 +90,19 @@ const createHomeResponse = (): Response =>
 		headers: { 'Content-Type': 'text/plain; charset=utf-8' },
 	});
 
+const validateTargetUrl = (targetUrl: string): URL | null => {
+	try {
+		const parsed = new URL(targetUrl);
+		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+			return null;
+		}
+
+		return parsed;
+	} catch {
+		return null;
+	}
+};
+
 export default {
 	async fetch(request, env): Promise<Response> {
 		const url = new URL(request.url);
@@ -99,10 +112,8 @@ export default {
 			return url.pathname === '/' ? createHomeResponse() : new Response('Invalid Request', { status: 400 });
 		}
 
-		let targetURL: URL;
-		try {
-			targetURL = new URL(targetUrl);
-		} catch {
+		const targetURL = validateTargetUrl(targetUrl);
+		if (!targetURL) {
 			return new Response('Invalid Request', { status: 400 });
 		}
 

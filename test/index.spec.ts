@@ -77,4 +77,46 @@ describe('link preview worker', () => {
 		expect(await response.text()).toBe('Domain not in whitelist');
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
+
+	it('rejects non-http protocols', async () => {
+		const request = new IncomingRequest('https://worker.example/?url=javascript:alert(1)', {
+			headers: {
+				'User-Agent': 'TelegramBot 1.0',
+			},
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(400);
+		expect(await response.text()).toBe('Invalid Request');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('returns 400 for non-root requests without url', async () => {
+		const request = new IncomingRequest('https://worker.example/invalid');
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(400);
+		expect(await response.text()).toBe('Invalid Request');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('returns 500 when preview fetch throws', async () => {
+		fetchSpy.mockRejectedValue(new Error('network down'));
+
+		const request = new IncomingRequest('https://worker.example/?url=https://example.com/article', {
+			headers: {
+				'User-Agent': 'TelegramBot 1.0',
+			},
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(500);
+		expect(await response.text()).toBe('Failed to fetch URL.');
+	});
 });
