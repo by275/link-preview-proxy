@@ -1,24 +1,65 @@
-import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
-import { describe, it, expect } from 'vitest';
+import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../src/index';
 
-// For now, you'll need to do something like this to get a correctly-typed
-// `Request` to pass to `worker.fetch()`.
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
-describe('Hello World worker', () => {
-	it('responds with Hello World! (unit style)', async () => {
-		const request = new IncomingRequest('http://example.com');
-		// Create an empty context to pass to `worker.fetch()`.
-		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, env, ctx);
-		// Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
-		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+describe('link preview worker', () => {
+	let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		fetchSpy = vi.spyOn(globalThis, 'fetch');
 	});
 
-	it('responds with Hello World! (integration style)', async () => {
-		const response = await SELF.fetch('https://example.com');
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+	afterEach(() => {
+		fetchSpy.mockRestore();
+	});
+
+	it('returns head-only HTML for preview bots', async () => {
+		fetchSpy.mockResolvedValue(
+			new Response('<!DOCTYPE html><html><head><meta property="og:title" content="Hello"></head><body>Body</body></html>', {
+				headers: { 'content-type': 'text/html; charset=utf-8' },
+			}),
+		);
+
+		const request = new IncomingRequest('https://worker.example/?url=https://example.com/article', {
+			headers: {
+				'User-Agent': 'TelegramBot 1.0',
+			},
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe(
+			'<!DOCTYPE html><html><head><meta property="og:title" content="Hello"></head><body></body></html>',
+		);
+	});
+
+	it('redirects non-bot requests to the target URL', async () => {
+		const request = new IncomingRequest('https://worker.example/?url=https://example.com/article', {
+			headers: {
+				'User-Agent': 'Mozilla/5.0',
+			},
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(302);
+		expect(response.headers.get('location')).toBe('https://example.com/article');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('shows usage when url is missing', async () => {
+		const request = new IncomingRequest('https://worker.example/');
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe('Usage: /?url=https://example.com');
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 });

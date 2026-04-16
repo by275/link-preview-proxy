@@ -1,20 +1,3 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
-
-const FETCH_HEADERS = new Headers({
-	'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
-});
-
 const BOT_AGENTS = [
 	'Slackbot',
 	'Discordbot',
@@ -22,67 +5,112 @@ const BOT_AGENTS = [
 	'facebookexternalhit',
 	'Twitterbot',
 	'Googlebot',
+	'LinkedInBot',
+	'WhatsApp',
+	'Notion',
 ];
 
-const isBotRequest = (userAgent: string): boolean =>
-	BOT_AGENTS.some(bot => userAgent.includes(bot));
+const FETCH_HEADERS = {
+	'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+	'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+	'Accept-Language': 'en-US,en;q=0.9',
+	'Upgrade-Insecure-Requests': '1',
+};
+
+const ALLOWED_DOMAINS: string[] = [];
+
+const isBotRequest = (request: Request): boolean => {
+	const userAgent = request.headers.get('User-Agent') || '';
+
+	return BOT_AGENTS.some(bot => userAgent.includes(bot));
+};
+
+const ensureAllowedDomain = (targetURL: URL): Response | null => {
+	if (ALLOWED_DOMAINS.length === 0) {
+		return null;
+	}
+
+	const isAllowed = ALLOWED_DOMAINS.some(domain =>
+		targetURL.hostname === domain || targetURL.hostname.endsWith(`.${domain}`),
+	);
+
+	return isAllowed ? null : new Response('Domain not in whitelist', { status: 403 });
+};
 
 const getText = async (resp: Response): Promise<string> => {
 	const contentType = resp.headers.get('content-type') || '';
 	const charsetMatch = contentType.match(/charset=([^;]+)/i);
-	const charset = charsetMatch?.[1]?.toLowerCase() || 'utf-8';
-
+	const charset = charsetMatch?.[1]?.trim().toLowerCase() || 'utf-8';
 	const buffer = await resp.arrayBuffer();
 
 	try {
 		return new TextDecoder(charset).decode(buffer);
 	} catch {
 		console.warn(`Invalid charset '${charset}', using utf-8 fallback.`);
-		return new TextDecoder('utf-8').decode(buffer);
+		return new TextDecoder().decode(buffer);
 	}
 };
 
 const getHead = (html: string): string => {
-	const match = html.match(/<head>(.*?)<\/head>/is);
+	const match = html.match(/<head\b[^>]*>([\s\S]*?)<\/head>/i);
 	return match ? match[1] : '';
 };
 
+const createPreviewResponse = async (targetURL: URL): Promise<Response> => {
+	const originResp = await fetch(targetURL, {
+		redirect: 'follow',
+		headers: FETCH_HEADERS,
+	});
+
+	if (!originResp.ok) {
+		console.warn(`Origin response status: ${originResp.status}`);
+		return new Response(`Origin response status: ${originResp.status}`, { status: originResp.status });
+	}
+
+	const htmlText = await getText(originResp);
+	const head = getHead(htmlText);
+	const metaHtml = `<!DOCTYPE html><html><head>${head}</head><body></body></html>`;
+
+	return new Response(metaHtml, {
+		headers: { 'Content-Type': 'text/html; charset=utf-8' },
+	});
+};
+
+const createHomeResponse = (): Response =>
+	new Response('Usage: /?url=https://example.com', {
+		headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+	});
+
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
+	async fetch(request): Promise<Response> {
 		const url = new URL(request.url);
 		const targetUrl = url.searchParams.get('url');
 
 		if (!targetUrl) {
+			return url.pathname === '/' ? createHomeResponse() : new Response('Invalid Request', { status: 400 });
+		}
+
+		let targetURL: URL;
+		try {
+			targetURL = new URL(targetUrl);
+		} catch {
 			return new Response('Invalid Request', { status: 400 });
 		}
 
-		const userAgent = request.headers.get('User-Agent') || '';
+		const domainError = ensureAllowedDomain(targetURL);
+		if (domainError) {
+			return domainError;
+		}
 
-		if (isBotRequest(userAgent)) {
+		if (isBotRequest(request)) {
 			try {
-				const originResp = await fetch(targetUrl, {
-					redirect: 'follow',
-					headers: FETCH_HEADERS
-				});
-				if (!originResp.ok) {
-					console.warn(`Origin response status: ${originResp.status}`);
-					return originResp;
-				}
-
-				const htmlText = await getText(originResp.clone());
-				let head = getHead(htmlText);
-
-				const metaHtml = `<!DOCTYPE html><html><head>${head}</head><body></body></html>`;
-
-				return new Response(metaHtml, {
-					headers: { 'Content-Type': 'text/html; charset=utf-8' }
-				});
-
-			} catch (e) {
+				return await createPreviewResponse(targetURL);
+			} catch (error) {
+				console.warn('Preview fetch failed', error);
 				return new Response('Failed to fetch URL.', { status: 500 });
 			}
 		}
 
-		return Response.redirect(targetUrl, 302);
+		return Response.redirect(targetURL.href, 302);
 	},
 } satisfies ExportedHandler<Env>;
