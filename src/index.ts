@@ -71,11 +71,6 @@ const isPrivateHostname = (hostname: string): boolean => {
 	return normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80:');
 };
 
-const ensurePublicTarget = (targetURL: URL): Response | null =>
-	isPrivateHostname(targetURL.hostname)
-		? new Response('Private network targets are not allowed', { status: 403 })
-		: null;
-
 const getText = async (resp: Response): Promise<string> => {
 	const contentType = resp.headers.get('content-type') || '';
 	const charsetMatch = contentType.match(/charset=([^;]+)/i);
@@ -95,9 +90,6 @@ const getHead = (html: string): string => {
 	return match ? match[1] : '';
 };
 
-const isHtmlContentType = (contentType: string): boolean =>
-	contentType.includes('text/html') || contentType.includes('application/xhtml+xml');
-
 const createPreviewResponse = async (targetURL: URL): Promise<Response> => {
 	const originResp = await fetch(targetURL, {
 		redirect: 'follow',
@@ -110,7 +102,7 @@ const createPreviewResponse = async (targetURL: URL): Promise<Response> => {
 	}
 
 	const contentType = originResp.headers.get('content-type') || '';
-	if (!isHtmlContentType(contentType)) {
+	if (!(contentType.includes('text/html') || contentType.includes('application/xhtml+xml'))) {
 		return new Response('Preview requires an HTML document.', { status: 415 });
 	}
 
@@ -128,16 +120,23 @@ const createHomeResponse = (): Response =>
 		headers: { 'Content-Type': 'text/plain; charset=utf-8' },
 	});
 
-const validateTargetUrl = (targetUrl: string): URL | null => {
+const validateTargetUrl = (targetUrl: string): { targetURL: URL | null; error: Response | null } => {
 	try {
 		const parsed = new URL(targetUrl);
 		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-			return null;
+			return { targetURL: null, error: new Response('Invalid Request', { status: 400 }) };
 		}
 
-		return parsed;
+		if (isPrivateHostname(parsed.hostname)) {
+			return {
+				targetURL: null,
+				error: new Response('Private network targets are not allowed', { status: 403 }),
+			};
+		}
+
+		return { targetURL: parsed, error: null };
 	} catch {
-		return null;
+		return { targetURL: null, error: new Response('Invalid Request', { status: 400 }) };
 	}
 };
 
@@ -150,14 +149,9 @@ export default {
 			return url.pathname === '/' ? createHomeResponse() : new Response('Invalid Request', { status: 400 });
 		}
 
-		const targetURL = validateTargetUrl(targetUrl);
+		const { targetURL, error } = validateTargetUrl(targetUrl);
 		if (!targetURL) {
-			return new Response('Invalid Request', { status: 400 });
-		}
-
-		const privateTargetError = ensurePublicTarget(targetURL);
-		if (privateTargetError) {
-			return privateTargetError;
+			return error || new Response('Invalid Request', { status: 400 });
 		}
 
 		const allowedDomains = getAllowedDomains(env as WorkerEnv);
