@@ -62,4 +62,19 @@ describe('link preview worker', () => {
 		expect(await response.text()).toBe('Usage: /?url=https://example.com');
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
+
+	it('blocks domains outside env allowlist', async () => {
+		const request = new IncomingRequest('https://worker.example/?url=https://blocked.example/article', {
+			headers: {
+				'User-Agent': 'TelegramBot 1.0',
+			},
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, { ...env, ALLOWED_DOMAINS: 'example.com, allowed.test' }, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(403);
+		expect(await response.text()).toBe('Domain not in whitelist');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
 });

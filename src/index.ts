@@ -17,7 +17,9 @@ const FETCH_HEADERS = {
 	'Upgrade-Insecure-Requests': '1',
 };
 
-const ALLOWED_DOMAINS: string[] = [];
+type WorkerEnv = Env & {
+	ALLOWED_DOMAINS?: string;
+};
 
 const isBotRequest = (request: Request): boolean => {
 	const userAgent = request.headers.get('User-Agent') || '';
@@ -25,13 +27,20 @@ const isBotRequest = (request: Request): boolean => {
 	return BOT_AGENTS.some(bot => userAgent.includes(bot));
 };
 
-const ensureAllowedDomain = (targetURL: URL): Response | null => {
-	if (ALLOWED_DOMAINS.length === 0) {
+const getAllowedDomains = (env: WorkerEnv): string[] =>
+	(env.ALLOWED_DOMAINS || '')
+		.split(',')
+		.map(domain => domain.trim().toLowerCase())
+		.filter(Boolean);
+
+const ensureAllowedDomain = (targetURL: URL, allowedDomains: string[]): Response | null => {
+	if (allowedDomains.length === 0) {
 		return null;
 	}
 
-	const isAllowed = ALLOWED_DOMAINS.some(domain =>
-		targetURL.hostname === domain || targetURL.hostname.endsWith(`.${domain}`),
+	const hostname = targetURL.hostname.toLowerCase();
+	const isAllowed = allowedDomains.some(domain =>
+		hostname === domain || hostname.endsWith(`.${domain}`),
 	);
 
 	return isAllowed ? null : new Response('Domain not in whitelist', { status: 403 });
@@ -82,7 +91,7 @@ const createHomeResponse = (): Response =>
 	});
 
 export default {
-	async fetch(request): Promise<Response> {
+	async fetch(request, env): Promise<Response> {
 		const url = new URL(request.url);
 		const targetUrl = url.searchParams.get('url');
 
@@ -97,7 +106,8 @@ export default {
 			return new Response('Invalid Request', { status: 400 });
 		}
 
-		const domainError = ensureAllowedDomain(targetURL);
+		const allowedDomains = getAllowedDomains(env as WorkerEnv);
+		const domainError = ensureAllowedDomain(targetURL, allowedDomains);
 		if (domainError) {
 			return domainError;
 		}
