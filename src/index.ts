@@ -65,6 +65,9 @@ const getHead = (html: string): string => {
 	return match ? match[1] : '';
 };
 
+const isHtmlContentType = (contentType: string): boolean =>
+	contentType.includes('text/html') || contentType.includes('application/xhtml+xml');
+
 const createPreviewResponse = async (targetURL: URL): Promise<Response> => {
 	const originResp = await fetch(targetURL, {
 		redirect: 'follow',
@@ -74,6 +77,11 @@ const createPreviewResponse = async (targetURL: URL): Promise<Response> => {
 	if (!originResp.ok) {
 		console.warn(`Origin response status: ${originResp.status}`);
 		return new Response(`Origin response status: ${originResp.status}`, { status: originResp.status });
+	}
+
+	const contentType = originResp.headers.get('content-type') || '';
+	if (!isHtmlContentType(contentType)) {
+		return new Response('Preview requires an HTML document.', { status: 415 });
 	}
 
 	const htmlText = await getText(originResp);

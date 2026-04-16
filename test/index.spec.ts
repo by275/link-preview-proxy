@@ -139,4 +139,24 @@ describe('link preview worker', () => {
 		expect(response.status).toBe(500);
 		expect(await response.text()).toBe('Failed to fetch URL.');
 	});
+
+	it('rejects non-html preview responses', async () => {
+		fetchSpy.mockResolvedValue(
+			new Response('not html', {
+				headers: { 'content-type': 'application/json' },
+			}),
+		);
+
+		const request = new IncomingRequest('https://worker.example/?url=https://example.com/data.json', {
+			headers: {
+				'User-Agent': 'TelegramBot 1.0',
+			},
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(415);
+		expect(await response.text()).toBe('Preview requires an HTML document.');
+	});
 });
