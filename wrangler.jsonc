@@ -7,6 +7,7 @@
 	"name": "link-preview-proxy",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-09-12",
+	"preview_urls": false,
 	"observability": {
 		"enabled": true
 	}
